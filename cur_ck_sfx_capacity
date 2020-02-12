@@ -1,0 +1,19 @@
+#! /bin/bash
+
+sfx_list=`lsblk | grep sfdv | awk '{print $1}'`
+for dev in ${sfx_list}
+do
+    sfx_size=/sys/block/${dev}/sfx_smart_features/sfx_capacity_stat
+
+    #Free_space physical_size logical_size comp_ratio
+
+    szl=`grep -A1 physical_size ${sfx_size} | grep -e [0-9] | awk '{print $2","$3","$4}'`
+    szlist=${szl%,}
+    p=`echo ${szlist} | cut -d ',' -f 1`
+    l=`echo ${szlist} | cut -d ',' -f 2`
+    ro=`echo ${szlist} | cut -d ',' -f 3`
+    pz=`expr ${p} \* 512`
+    lz=`expr ${l} \* 512`
+    echo -e "ssd=${dev}, physical_size (B)=${pz}, logical_size (B)=${lz}, comp_ratio=${ro}"
+done
+

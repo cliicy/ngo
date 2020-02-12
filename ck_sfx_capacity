@@ -1,0 +1,21 @@
+#! /bin/bash
+
+sfx_list=`lsblk | grep sfdv | awk '{print $1}'`
+for dev in ${sfx_list}
+do
+    cat /sys/block/${dev}/sfx_smart_features/sfx_capacity_stat > /tmp/${dev}.dbsize
+
+    #Free_space physical_size logical_size comp_ratio
+    #dbs="workload,physical_size (GB),logical_size (GB),comp_ratio"
+
+    szl=`grep -A1 physical_size /tmp/${dev}.dbsize | grep -e [0-9] | awk '{print $2","$3","$4}'`
+    szlist=${szl%,}
+    p=`echo ${szlist} | cut -d ',' -f 1`
+    l=`echo ${szlist} | cut -d ',' -f 2`
+    ro=`echo ${szlist} | cut -d ',' -f 3`
+    workload=${dev}
+    pz=`expr ${p} / 2 / 1024 / 1024`
+    lz=`expr ${l} / 2 / 1024 / 1024`
+    echo -e "ssd=${dev}, physical_size (GB)=${pz}, logical_size (GB)=${lz}, comp_ratio=${ro}\n"
+done
+
