@@ -1,6 +1,24 @@
 #! /bin/bash
 
-# check the free/used driver capacity to send warning
+#
+# ck_sfx_capacity takes two threshold values: warning and critical,
+# warning must be greater than critical 
+# returning successfully if the free_space% is >  warning
+# returning warning state if the free_space% is in the range  (critical, warning]
+# returning critical state if the free_space% is in the range [0,critical]
+# alert should be raised based on the two thresholds.
+# Values may be integers.
+#
+# Example usage:
+#
+# Generating an exit code of 0:
+# ck_sfx_capacity 85 10
+#
+# Generating an exit code of 1 with warning alert:
+# or an exit code of 2 with critical alert
+# ck_sfx_capacity 30 10
+#
+
 USAGE="`basename $0` [-w|--warning]<percent free> [-c|--critical]<percent free>"
 THRESHOLD_USAGE="WARNING threshold must be greater than CRITICAL: `basename $0` $*"
 critical=""
@@ -32,6 +50,17 @@ while [[ $# -gt 0 ]]
         shift
   done
 
+# verify the parameters are valid
+pvlist="${warning} ${critical}"
+for pv in ${pvlist}
+do
+    len=`echo "${pv}"|sed 's/[0-9]//g'`
+    if [ -n "${len}" ] ; then
+        echo "threshold must be integer" 
+        exit 0
+    fi
+done
+
 # verify input
 if [[ $warning -eq $critical || $warning -lt $critical ]]
 then
@@ -43,54 +72,53 @@ then
         exit 0
 fi
 
+sysdir=/sys/block/sfdv*
 unit=bytes
 capfile=/tmp/sfx_cap
 echo "sfx capacity information" > ${capfile}
-sfx_list=`lsblk | grep sfdv | awk '{print $1}'`
+
+sfx_list=`ls -d ${sysdir}`
 for dev in ${sfx_list}
 do
-    sfx_size=/sys/block/${dev}/sfx_smart_features/sfx_capacity_stat
     #Free_space physical_size logical_size comp_ratio
-
-    szl=`grep -A1 physical_size ${sfx_size} | grep -e [0-9] | awk '{print $1","$2","$3","$4}'`
-    szlist=${szl%,}
-    f=`echo ${szlist} | cut -d ',' -f 1`
-    p=`echo ${szlist} | cut -d ',' -f 2`
-    l=`echo ${szlist} | cut -d ',' -f 3`
-    ro=`echo ${szlist} | cut -d ',' -f 4`
+    sfx_dir=${dev}/sfx_smart_features
+    f=`cat ${sfx_dir}/sfx_freespace`
+    p=`cat ${sfx_dir}/sfx_physical_size`
+    l=`cat ${sfx_dir}/sfx_logical_size`
+    ro=`cat ${sfx_dir}/sfx_comp_ratio`
     fz=`expr ${f} \* 512`
     pz=`expr ${p} \* 512`
     lz=`expr ${l} \* 512`
-    #echo -e "ssd=${dev}, free_sapce (B)=${fz}, physical_size (B)=${pz}, logical_size (B)=${lz}, comp_ratio=${ro}"
     # caculate the free logical size
     ttl=`expr ${f} + ${l}` 
     percent=`echo "${f}*100/${ttl}" | bc`
-    info="${dev} free space:${fz} ${unit} , (${percent}%) Free disk. physical_size (B)=${pz}, comp_ratio=${ro}"
+    info="`basename ${dev}` free space:${fz} ${unit} , (${percent}%) Free disk. physical_size (B)=${pz}, comp_ratio=${ro}"
+
     if [[ "${percent}" -le  ${critical} ]]
         then
                 echo "CRITICAL - ${info}" >> ${capfile}
-    fi
-    if [[ "${percent}" -le  ${warning} ]]
+    elif [[ "${percent}" -le  ${warning} ]]
         then
                 echo "WARNING - ${info}" >> ${capfile}
-    fi
-    if [[ "${percent}" -gt  ${warning} ]]
+    elif [[ "${percent}" -gt  ${warning} ]]
         then
                 echo "OK - ${info}" >> ${capfile}
     fi
 done
 
-grep "CRITICAL" /tmp/sfx_cap
+cat ${capfile}
+
+grep -q "CRITICAL" ${capfile}
 if [ $? -eq 0 ]; then
     exit 2
 fi
 
-grep "WARNING" /tmp/sfx_cap
+grep -q "WARNING" ${capfile} 
 if [ $? -eq  0 ]; then
     exit 1
 fi
 
-grep "OK" /tmp/sfx_cap
+grep -q "OK" ${capfile} 
 if [ $? -eq  0 ]; then
     exit 0
 fi

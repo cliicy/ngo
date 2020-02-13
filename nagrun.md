@@ -7,3 +7,4 @@ make instal
 sudo chmod 755 /usr/local/nagios/libexec/ck_sfx_capacity
 sudo killall nrpe
 sudo /usr/local/nagios/bin/nrpe -d -c /usr/local/nagios/etc/nrpe.cfg
+sh /usr/local/nagios/libexec/ck_sfx_capacity -w 25 -c 20
